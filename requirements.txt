@@ -1,0 +1,11 @@
+crewai
+langchain
+crewai-tools
+feedparser
+requests
+beautifulsoup4
+python-dotenv
+langchain-community
+langchain-core
+python-wordpress-xmlrpc
+langchain-ollama
