@@ -68,7 +68,7 @@ python main.py
 
 Run tests:
 ```bash
-python -m pytest
+python -m pytest tests/
 ```
 
 ## Project Structure

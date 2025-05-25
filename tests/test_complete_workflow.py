@@ -1,5 +1,8 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.news_fetcher_tool import RSSNewsFetcherTool
 from tools.wordpress_poster_tool import WordPressPosterTool
 from crewai import Agent, Task, Crew, Process
