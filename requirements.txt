@@ -9,3 +9,4 @@ langchain-community
 langchain-core
 python-wordpress-xmlrpc
 langchain-ollama
+pytest
