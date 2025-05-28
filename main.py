@@ -1,4 +1,4 @@
-from crewai import Agent, Task, Crew
+from crewai import Agent, Task, Crew, LLM
 from tools.news_fetcher_tool import RSSNewsFetcherTool
 from tools.wordpress_poster_tool import WordPressPosterTool
 from logger import setup_logger
@@ -99,8 +99,8 @@ def create_tasks(fetcher, summarizer, writer, poster):
         description="""Create an engaging blog post that synthesizes the summarized news items.
         Format your output as a dictionary that MUST contain these exact fields:
         {
-            "title": "Your SEO-friendly title as a plain string",
-            "content": "Your full blog post content with proper formatting",
+            "title": "{{Your SEO-friendly title as a plain string}}",
+            "content": "{{Your full blog post content with proper formatting}}",
             "tags": ["technology", "ai", "space", "tech-news", "innovation"],  # Example tags - customize based on content
             "categories": [5]  # Technology category ID
         }
@@ -124,28 +124,29 @@ def create_tasks(fetcher, summarizer, writer, poster):
 
     # Fourth task - post to WordPress (depends on write_task)
     post_task = Task(
-        description="""Publish the blog post to WordPress using the wordpress_poster_tool.
+        description="""You have access to wordpress_poster_tool that can post to WordPress.
+
+        1. Take the dictionary from the previous task's output (context)
+        2. Call wordpress_poster_tool.run() with that dictionary as the argument
+        3. Get the 'link' from the response
+        4. Return ONLY that link
+
+        Example usage:
+        result = wordpress_poster_tool.run(context)
+        return result['link']
+
+        Notes:
+        - The input dictionary must have: title, content, tags, categories
+        - The tool will handle all WordPress API formatting
+        - Return only the URL, no other text or formatting
         
-        Your previous task's output should be a dictionary containing:
-        - title: A plain string title
-        - content: The full blog post content
-        - tags: List of relevant tags
-        - categories: List of category IDs
+        Example good output:
+        https://example.com/?p=123
         
-        Follow these steps exactly:
-        1. Get the dictionary from your context (previous task's output)
-        2. Run this exact code:
-           result = wordpress_poster_tool.run(post_dictionary)
-        3. Verify the post was created by checking result["id"] exists
-        4. Return result["link"] as the final output
-        
-        DO NOT:
-        - Modify the dictionary structure
-        - Change the title format
-        - Add or remove fields
-        - Return a dummy URL
-        
-        If there are any errors, show them in your response.""",
+        Example bad output:
+        "URL: https://example.com/?p=123"
+        Posted successfully at: https://example.com/?p=123
+        Here's the link https://example.com/?p=123""",
         expected_output="The actual WordPress post URL from the API response (result['link'])",
         agent=poster,
         context=[write_task]  # Pass the write task as context
@@ -171,11 +172,18 @@ def main():
     try:
         # Initialize LLM
         logger.info("Initializing Ollama LLM...")
-        llm = CustomOllamaLLM(
+        # llm = CustomOllamaLLM(
+        #     model="ollama/mistral:7b",
+        #     base_url="http://localhost:11434",
+        #     temperature=0.7,
+        #     verbose=True
+        # )
+
+        llm = LLM(
             model="ollama/mistral:7b",
             base_url="http://localhost:11434",
             temperature=0.7,
-            verbose=True
+            timeout=240
         )
         
         # Create agents and tasks

@@ -29,7 +29,7 @@ This project implements an automated blog content pipeline that:
 
 1. Clone the repository:
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/ekinbulut/crewai-python-publisher.git
 cd crewai
 ```
 
