@@ -54,9 +54,11 @@ def create_agents(llm):
     )
 
     poster = Agent(
-        role="Blog Poster",
-        goal="Publish the post to WordPress using REST API",
-        backstory="Handles blog publishing duties with attention to SEO and proper formatting.",
+        role="Blog Publisher",
+        goal="Publish pre-formatted blog posts to WordPress while maintaining data structure integrity",
+        backstory="""A technical publisher who specializes in WordPress REST API integration. 
+        Experienced in handling structured data and ensuring it's properly transmitted to WordPress 
+        without modifying the original format.""",
         tools=[wordpress_tool],
         verbose=True,
         llm=llm
@@ -95,26 +97,56 @@ def create_tasks(fetcher, summarizer, writer, poster):
     # Third task - write blog post (depends on summarize_task)
     write_task = Task(
         description="""Create an engaging blog post that synthesizes the summarized news items.
-        Include:
+        Format your output as a dictionary that MUST contain these exact fields:
+        {
+            "title": "Your SEO-friendly title as a plain string",
+            "content": "Your full blog post content with proper formatting",
+            "tags": ["technology", "ai", "space", "tech-news", "innovation"],  # Example tags - customize based on content
+            "categories": [5]  # Technology category ID
+        }
+        
+        In the blog post content, include:
         - A compelling introduction
         - Organized content by themes
         - Technological implications
         - Industry analysis
-        - Future predictions""",
-        expected_output="A complete blog post ready for publishing",
+        - Future predictions
+        
+        Important: 
+        1. The title must be a plain string, not a JSON object or dictionary
+        2. All four dictionary fields (title, content, tags, categories) must be present
+        3. The tags list should be relevant to your content
+        4. The categories list must contain [5] for the technology category""",
+        expected_output="A dictionary containing the blog post title, content, tags, and categories",
         agent=writer,
         context=[summarize_task]  # Pass the summarize task as context
     )
 
     # Fourth task - post to WordPress (depends on write_task)
     post_task = Task(
-        description="""Publish the blog post to WordPress:
-        - Create SEO-friendly title
-        - Add proper formatting
-        - Include relevant tags and categories
-        - Set featured image if available
-        - Verify successful publication""",
-        expected_output="The URL of the published blog post",
+        description="""Publish the blog post to WordPress using the wordpress_poster_tool.
+        
+        Your previous task's output should be a dictionary containing:
+        - title: A plain string title
+        - content: The full blog post content
+        - tags: List of relevant tags
+        - categories: List of category IDs
+        
+        Follow these steps exactly:
+        1. Get the dictionary from your context (previous task's output)
+        2. Run this exact code:
+           result = wordpress_poster_tool.run(post_dictionary)
+        3. Verify the post was created by checking result["id"] exists
+        4. Return result["link"] as the final output
+        
+        DO NOT:
+        - Modify the dictionary structure
+        - Change the title format
+        - Add or remove fields
+        - Return a dummy URL
+        
+        If there are any errors, show them in your response.""",
+        expected_output="The actual WordPress post URL from the API response (result['link'])",
         agent=poster,
         context=[write_task]  # Pass the write task as context
     )

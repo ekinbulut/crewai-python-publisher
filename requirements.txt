@@ -10,3 +10,6 @@ langchain-core
 python-wordpress-xmlrpc
 langchain-ollama
 pytest
+responses
+pytest-mock
+pytest-cov
