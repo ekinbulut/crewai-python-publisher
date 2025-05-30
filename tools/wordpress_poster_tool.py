@@ -1,5 +1,5 @@
 from crewai.tools import BaseTool
-from pydantic import Field
+from pydantic import Field, BaseModel
 import requests
 import os
 import json
@@ -13,9 +13,16 @@ import time
 
 logger = setup_logger()
 
+class WordPressPostData(BaseModel):
+    title: str = Field(description="The title of the blog post")
+    content: str = Field(description="The full content of the blog post")
+    tags: List[str] = Field(description="List of tags for the post")
+    categories: List[int] = Field(description="List of category IDs for the post")
+
 class WordPressPosterTool(BaseTool):
     name: str = Field(default="wordpress_poster")
     description: str = Field(default="Posts content to a WordPress blog using the REST API")
+    args_schema: type[BaseModel] = WordPressPostData
     _last_request_time: float = 0
     _min_request_interval: float = 2.0  # Minimum seconds between requests
     _max_retries: int = 3
@@ -43,7 +50,7 @@ class WordPressPosterTool(BaseTool):
                     headers=headers,
                     json=payload,
                     verify=True,
-                    timeout=30  # Add explicit timeout
+                    timeout=30
                 )
                 return response
             except (requests.ConnectionError, requests.Timeout) as e:
@@ -57,79 +64,10 @@ class WordPressPosterTool(BaseTool):
         
         raise RuntimeError(f"Failed to make request: {str(last_exception)}")
 
-    def _create_tag(self, tag_name: str) -> int:
-        """Create a new tag and return its ID"""
-        url, user, password = self._get_credentials()
-        api_url = f"{url.rsplit('/posts', 1)[0]}/tags"
-        
-        payload = {
-            "name": tag_name,
-            "description": ""  # Optional description
-        }
-        
-        try:
-            response = requests.post(
-                api_url,
-                auth=HTTPBasicAuth(user, password),
-                headers={'Content-Type': 'application/json'},
-                json=payload
-            )
-            
-            if response.ok:
-                data = response.json()
-                return data.get('id')
-            elif response.status_code == 400 and 'existing' in response.text.lower():
-                # Tag might already exist, try to fetch it
-                return self._get_tag_id(tag_name)
-            else:
-                logger.warning(f"Failed to create tag '{tag_name}': {response.text}")
-                return None
-                
-        except Exception as e:
-            logger.error(f"Error creating tag '{tag_name}': {str(e)}")
-            return None
-            
-    def _get_tag_id(self, tag_name: str) -> Optional[int]:
-        """Get the ID of an existing tag by name"""
-        url, user, password = self._get_credentials()
-        api_url = f"{url.rsplit('/posts', 1)[0]}/tags"
-        
-        try:
-            response = requests.get(
-                f"{api_url}?search={tag_name}",
-                auth=HTTPBasicAuth(user, password)
-            )
-            
-            if response.ok:
-                tags = response.json()
-                for tag in tags:
-                    if tag.get('name', '').lower() == tag_name.lower():
-                        return tag.get('id')
-            return None
-            
-        except Exception as e:
-            logger.error(f"Error fetching tag '{tag_name}': {str(e)}")
-            return None
-            
-    def _handle_tags(self, tag_names: List[str]) -> List[int]:
-        """Convert tag names to tag IDs, creating new tags if necessary"""
-        tag_ids = []
-        for tag_name in tag_names:
-            # Try to get existing tag ID
-            tag_id = self._get_tag_id(tag_name)
-            if tag_id is None:
-                # Create new tag if it doesn't exist
-                tag_id = self._create_tag(tag_name)
-            if tag_id:
-                tag_ids.append(tag_id)
-        return tag_ids
-
     def _get_credentials(self) -> Tuple[str, str, str]:
         """Get and validate WordPress credentials"""
-        # Ensure environment variables are loaded
         load_dotenv()
         
-        # Get credentials from environment
         url = os.getenv("WORDPRESS_URL")
         user = os.getenv("WORDPRESS_USER")
         password = os.getenv("WORDPRESS_PASS")
@@ -146,7 +84,7 @@ class WordPressPosterTool(BaseTool):
         logger.info("WordPress credentials validated successfully")
         return url, user, password
 
-    def _get_or_create_tag(self, tag_name: str, auth: Tuple[str, str]) -> int:
+    def _get_or_create_tag(self, tag_name: str, auth: HTTPBasicAuth) -> Optional[int]:
         """Get tag ID or create if it doesn't exist"""
         url, _, _ = self._get_credentials()
         base_url = url.split('/wp-json')[0]
@@ -171,31 +109,6 @@ class WordPressPosterTool(BaseTool):
         else:
             logger.warning(f"Failed to create tag '{tag_name}': {response.text}")
             return None
-
-    def _handle_tags(self, post_id: int, tag_names: List[str], auth: Tuple[str, str]) -> None:
-        """Process tags for a post, creating them if needed"""
-        if not tag_names:
-            return
-        
-        tag_ids = []
-        for tag_name in tag_names:
-            tag_id = self._get_or_create_tag(tag_name, auth)
-            if tag_id:
-                tag_ids.append(tag_id)
-        
-        if tag_ids:
-            url, _, _ = self._get_credentials()
-            base_url = url.split('/wp-json')[0]
-            update_url = f"{base_url}/wp-json/wp/v2/posts/{post_id}"
-            
-            response = requests.post(
-                update_url,
-                json={'tags': tag_ids},
-                auth=auth
-            )
-            
-            if not response.ok:
-                logger.warning(f"Failed to update post tags: {response.text}")
 
     def _validate_response(self, response: requests.Response) -> Dict[str, Any]:
         """Validate the WordPress API response"""
@@ -222,29 +135,20 @@ class WordPressPosterTool(BaseTool):
             else:
                 raise ValueError(f"HTTP error {response.status_code}: {response.text}")
 
-    def _run(self, post_data: Any) -> Dict[str, Any]:
+    def _run(self, title: str, content: str, tags: List[str], categories: List[int]) -> Dict[str, Any]:
         """Post content to WordPress and return the API response"""
         try:
             logger.info("WordPress Poster Tool received input")
-            logger.debug(f"Raw post data:\n{json.dumps(post_data, indent=2)}")
             
-            # Ensure we have a dictionary
-            if not isinstance(post_data, dict):
-                raise ValueError("Input must be a dictionary")
-            
-            # Verify all required fields
-            required_fields = ['title', 'content', 'tags', 'categories']
-            if not all(k in post_data for k in required_fields):
-                missing = [k for k in required_fields if k not in post_data]
-                raise ValueError(f"Missing required fields: {', '.join(missing)}")
-            
-            # Clean and validate the data
+            # Create post_data dictionary from parameters
             post_dict = {
-                'title': str(post_data['title']).strip(),  # Ensure title is a clean string
-                'content': str(post_data['content']),
-                'categories': post_data['categories'],
-                'tags': post_data['tags']
+                'title': str(title).strip(),
+                'content': str(content),
+                'tags': tags,
+                'categories': categories
             }
+            
+            logger.debug(f"Post data:\n{json.dumps(post_dict, indent=2)}")
             
             # Additional validation
             if not post_dict['title']:
@@ -258,24 +162,23 @@ class WordPressPosterTool(BaseTool):
             
             # Get WordPress credentials
             url, user, password = self._get_credentials()
+            auth = HTTPBasicAuth(str(user), str(password))
             
-            # Use the URL as is since it already contains the full API endpoint
-            api_url = url
+            # Process tags first to get their IDs
+            tag_ids = []
+            for tag_name in post_dict['tags']:
+                tag_id = self._get_or_create_tag(tag_name, auth)
+                if tag_id:
+                    tag_ids.append(tag_id)
             
             # Format payload according to WordPress REST API requirements
             payload = {
-                "title": post_dict['title'],
-                "content": post_dict['content'],
-                "status": "draft",  # Always create as draft first
-                "categories": post_dict['categories']
-                # Tags will be handled separately after post creation
+                "title": {"raw": post_dict['title']},
+                "content": {"raw": post_dict['content']},
+                "status": "draft",
+                "categories": post_dict['categories'],
+                "tags": tag_ids
             }
-            
-            # Make sure title and content are properly formatted for the API
-            if isinstance(payload["title"], str):
-                payload["title"] = {"raw": payload["title"]}
-            if isinstance(payload["content"], str):
-                payload["content"] = {"raw": payload["content"]}
 
             headers = {
                 'Content-Type': 'application/json',
@@ -284,14 +187,13 @@ class WordPressPosterTool(BaseTool):
             
             logger.info(f"Posting to WordPress: {payload['title']}")
             
-            # Make the request
+            # Make the request with retry logic
             try:
-                response = requests.post(
-                    api_url,
-                    auth=HTTPBasicAuth(str(user), str(password)),  # Ensure strings for auth
+                response = self._make_request_with_retry(
+                    url=url,
+                    auth=auth,
                     headers=headers,
-                    json=payload,
-                    verify=True
+                    payload=payload
                 )
             except requests.RequestException as e:
                 raise RuntimeError(f"Failed to connect to WordPress: {str(e)}")

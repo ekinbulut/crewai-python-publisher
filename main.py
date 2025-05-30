@@ -26,7 +26,7 @@ def create_agents(llm):
     """Create and return all agents with their tools"""
     logger.info("Initializing tools...")
     news_tool = RSSNewsFetcherTool()
-    wordpress_tool = WordPressPosterTool()
+    wordpress_poster = WordPressPosterTool()
     
     logger.info("Creating agents...")
     fetcher = Agent(
@@ -60,7 +60,7 @@ def create_agents(llm):
         backstory="""A technical publisher who specializes in WordPress REST API integration. 
         Experienced in handling structured data and ensuring it's properly transmitted to WordPress 
         without modifying the original format.""",
-        tools=[wordpress_tool],
+        tools=[wordpress_poster],
         verbose=True,
         llm=llm
     )
@@ -78,32 +78,35 @@ def create_tasks(fetcher, summarizer, writer, poster):
         - Major tech announcements
         - Software industry updates
         - AI and ML developments
-        - Cybersecurity news""",
+        - Cybersecurity news
+        
+        Format your output as a clear list of news items with titles and summaries.
+        Ensure your output is properly formatted and complete before finishing.""",
         expected_output="A list of current tech news articles with titles and summaries",
         agent=fetcher,
-        context=[]  # Explicitly set empty context
+        context=[],  # Empty context for first task
+        output_format="The output should be well-structured text with news items"
     )
-    
-    # Validate fetch task result before proceeding
-    if not fetch_task.context:
-        fetch_task.context = []  # Ensure context is never None
 
     # Second task - summarize news (depends on fetch_task)
     summarize_task = Task(
-        description="""Create bullet-point summaries for each news article. Focus on:
+        description="""Take the news articles from the previous task and create bullet-point summaries.
+
+        Previous task output format:
+        A list of news items with Title, Link, and Summary sections.
+
+        Your task:
+        Create bullet-point summaries for each news article focusing on:
         - Key technological advancements
         - Industry impacts
         - Main announcements
-        - Critical insights""",
+        - Critical insights
+        
+        Format each summary as clear bullet points for easy reading.""",
         expected_output="A well-organized list of bullet-point summaries for each news article",
         agent=summarizer,
         context=[fetch_task]  # Pass the fetch task as context
     )
-    
-    # Validate summarize task context
-    if not summarize_task.context:
-        logger.warning("Summarize task missing context from fetch task")
-        summarize_task.context = [fetch_task]
 
     # Third task - write blog post (depends on summarize_task)
     write_task = Task(
@@ -135,34 +138,19 @@ def create_tasks(fetcher, summarizer, writer, poster):
 
     # Fourth task - post to WordPress (depends on write_task)
     post_task = Task(
-        description="""EXACTLY follow these steps to post to WordPress:
+        description="""MANDATORY: You MUST call the 'wordpress_poster' tool. No exceptions.
 
-        1. Get the dictionary from the previous task (write_task) output
-        2. Execute this EXACT code (copy it exactly):
-           ```python
-           link = wordpress_poster_tool.run(write_task.output.raw)
-           return link['link']
-           ```
-        3. Return ONLY the URL from the response
+        Step 1: Extract the Python dictionary from the previous task output (remove any code block markers)
+        Step 2: Call the wordpress_poster tool with the individual parameters from the dictionary
+        Step 3: Return the actual URL that the tool provides
 
-        The input dictionary MUST have these fields:
-        - title (string)
-        - content (string)
-        - tags (list)
-        - categories (list)
+        REQUIRED TOOL CALL FORMAT:
+        wordpress_poster(title="...", content="...", tags=[...], categories=[...])
 
-        DO NOT:
-        - Modify the dictionary structure
-        - Add any extra text or formatting
-        - Return anything except the URL
-
-        Example good output:
-        https://example.com/?p=123
-
-        Example bad output:
-        "Here's the link: https://example.com/?p=123"
-        {"url": "https://example.com/?p=123"}""",
-        expected_output="The WordPress post URL (example: https://example.com/?p=123)",
+        Extract the title, content, tags, and categories from the dictionary and pass them as separate parameters.
+        You cannot complete this task without actually calling the wordpress_poster tool.
+        Do NOT provide placeholder text or descriptions - execute the tool call.""",
+        expected_output="The actual WordPress URL returned by calling the wordpress_poster tool",
         agent=poster,
         context=[write_task]  # Pass the write task as context
     )
@@ -221,14 +209,15 @@ def main():
             logger.error("Ollama service is not available after retries")
             sys.exit(1)
         
-        # Initialize LLM with more conservative settings
-        logger.info("Initializing Ollama LLM...")
+        # Initialize LLM with llama3.2 (more stable for sequential tasks)
+        logger.info("Initializing Ollama LLM with llama3.2...")
         llm = LLM(
             model="ollama/mistral:7b",
             base_url="http://localhost:11434",
-            temperature=0.2,
+            temperature=0.1,  # Lower temperature for more focused outputs
             timeout=300,
-            request_timeout=300
+            request_timeout=300,
+            context_window=4096  # Standard context window
         )
         
         # Create agents and tasks
