@@ -9,10 +9,54 @@ from logger import setup_logger
 from typing import Dict, Any, List, Tuple, Optional, Union
 from urllib.parse import urljoin, urlparse
 import re
+import time
 
 logger = setup_logger()
 
 class WordPressPosterTool(BaseTool):
+    name: str = Field(default="wordpress_poster")
+    description: str = Field(default="Posts content to a WordPress blog using the REST API")
+    _last_request_time: float = 0
+    _min_request_interval: float = 2.0  # Minimum seconds between requests
+    _max_retries: int = 3
+
+    def _wait_for_rate_limit(self):
+        """Implement rate limiting between requests"""
+        current_time = time.time()
+        time_since_last = current_time - self._last_request_time
+        if time_since_last < self._min_request_interval:
+            sleep_time = self._min_request_interval - time_since_last
+            logger.debug(f"Rate limiting: waiting {sleep_time:.2f} seconds")
+            time.sleep(sleep_time)
+        self._last_request_time = time.time()
+
+    def _make_request_with_retry(self, url: str, auth: HTTPBasicAuth, headers: dict, payload: dict) -> requests.Response:
+        """Make HTTP request with retry logic"""
+        last_exception = None
+        
+        for attempt in range(self._max_retries):
+            try:
+                self._wait_for_rate_limit()
+                response = requests.post(
+                    url,
+                    auth=auth,
+                    headers=headers,
+                    json=payload,
+                    verify=True,
+                    timeout=30  # Add explicit timeout
+                )
+                return response
+            except (requests.ConnectionError, requests.Timeout) as e:
+                last_exception = e
+                if attempt < self._max_retries - 1:
+                    wait_time = (attempt + 1) * 2  # Exponential backoff
+                    logger.warning(f"Request failed, retrying in {wait_time} seconds... ({str(e)})")
+                    time.sleep(wait_time)
+                    continue
+                raise RuntimeError(f"Failed after {self._max_retries} retries: {str(e)}")
+        
+        raise RuntimeError(f"Failed to make request: {str(last_exception)}")
+
     def _create_tag(self, tag_name: str) -> int:
         """Create a new tag and return its ID"""
         url, user, password = self._get_credentials()
@@ -79,8 +123,6 @@ class WordPressPosterTool(BaseTool):
             if tag_id:
                 tag_ids.append(tag_id)
         return tag_ids
-    name: str = Field(default="wordpress_poster")
-    description: str = Field(default="Posts content to a WordPress blog using the REST API")
 
     def _get_credentials(self) -> Tuple[str, str, str]:
         """Get and validate WordPress credentials"""

@@ -72,11 +72,7 @@ class RSSNewsFetcherTool(BaseTool):
             feeds = [
                 'https://techcrunch.com/feed/',
                 'https://www.theverge.com/rss/index.xml',
-                'https://www.wired.com/feed/rss',
-                'https://feeds.arstechnica.com/arstechnica/index',
-                'https://www.zdnet.com/feed',
-                'https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml',
-                'https://www.cnet.com/rss/news/'
+                'https://www.wired.com/feed/rss'
             ]
             logger.info(f"Configured to fetch from {len(feeds)} RSS feeds")
             

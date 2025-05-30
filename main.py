@@ -8,6 +8,7 @@ import os
 import sys
 import time
 from dotenv import load_dotenv
+import gc
 
 logger = setup_logger()
 
@@ -79,8 +80,13 @@ def create_tasks(fetcher, summarizer, writer, poster):
         - AI and ML developments
         - Cybersecurity news""",
         expected_output="A list of current tech news articles with titles and summaries",
-        agent=fetcher
+        agent=fetcher,
+        context=[]  # Explicitly set empty context
     )
+    
+    # Validate fetch task result before proceeding
+    if not fetch_task.context:
+        fetch_task.context = []  # Ensure context is never None
 
     # Second task - summarize news (depends on fetch_task)
     summarize_task = Task(
@@ -93,6 +99,11 @@ def create_tasks(fetcher, summarizer, writer, poster):
         agent=summarizer,
         context=[fetch_task]  # Pass the fetch task as context
     )
+    
+    # Validate summarize task context
+    if not summarize_task.context:
+        logger.warning("Summarize task missing context from fetch task")
+        summarize_task.context = [fetch_task]
 
     # Third task - write blog post (depends on summarize_task)
     write_task = Task(
@@ -124,91 +135,132 @@ def create_tasks(fetcher, summarizer, writer, poster):
 
     # Fourth task - post to WordPress (depends on write_task)
     post_task = Task(
-        description="""You have access to wordpress_poster_tool that can post to WordPress.
+        description="""EXACTLY follow these steps to post to WordPress:
 
-        1. Take the dictionary from the previous task's output (context)
-        2. Call wordpress_poster_tool.run() with that dictionary as the argument
-        3. Get the 'link' from the response
-        4. Return ONLY that link
+        1. Get the dictionary from the previous task (write_task) output
+        2. Execute this EXACT code (copy it exactly):
+           ```python
+           link = wordpress_poster_tool.run(write_task.output.raw)
+           return link['link']
+           ```
+        3. Return ONLY the URL from the response
 
-        Example usage:
-        result = wordpress_poster_tool.run(context)
-        return result['link']
+        The input dictionary MUST have these fields:
+        - title (string)
+        - content (string)
+        - tags (list)
+        - categories (list)
 
-        Notes:
-        - The input dictionary must have: title, content, tags, categories
-        - The tool will handle all WordPress API formatting
-        - Return only the URL, no other text or formatting
-        
+        DO NOT:
+        - Modify the dictionary structure
+        - Add any extra text or formatting
+        - Return anything except the URL
+
         Example good output:
         https://example.com/?p=123
-        
+
         Example bad output:
-        "URL: https://example.com/?p=123"
-        Posted successfully at: https://example.com/?p=123
-        Here's the link https://example.com/?p=123""",
-        expected_output="The actual WordPress post URL from the API response (result['link'])",
+        "Here's the link: https://example.com/?p=123"
+        {"url": "https://example.com/?p=123"}""",
+        expected_output="The WordPress post URL (example: https://example.com/?p=123)",
         agent=poster,
         context=[write_task]  # Pass the write task as context
     )
     
     return [fetch_task, summarize_task, write_task, post_task]
 
+def run_with_retry(crew, max_retries=3):
+    """Run the crew workflow with retry logic"""
+    last_error = None
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"Starting workflow attempt {attempt + 1}/{max_retries}")
+            result = crew.kickoff()
+            logger.info("Workflow completed successfully")
+            return result
+        except Exception as e:
+            last_error = e
+            logger.error(f"Error in workflow attempt {attempt + 1}: {str(e)}")
+            if attempt < max_retries - 1:
+                wait_time = (attempt + 1) * 5  # Exponential backoff
+                logger.info(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                continue
+            logger.error(f"Workflow failed after {max_retries} attempts")
+            raise RuntimeError(f"Workflow failed: {str(last_error)}")
+
+def clear_agent_memory(agent):
+    """Clear an agent's memory to prevent memory leaks"""
+    if hasattr(agent, 'memory'):
+        agent.memory.clear()
+    if hasattr(agent, 'conversation_memory'):
+        agent.conversation_memory.clear()
+
+def cleanup_resources(agents):
+    """Cleanup resources after workflow completion"""
+    logger.info("Cleaning up resources...")
+    for agent in agents:
+        clear_agent_memory(agent)
+    gc.collect()
+
 def main():
     start_time = time.time()
     logger.info("Starting CrewAI Blog Generation System")
-    
-    # Load environment variables
-    load_dotenv()
-    
-    # Verify environment variables
-    verify_environment()
-    
-    # Check Ollama availability
-    if not check_ollama():
-        logger.error("Ollama service is not available")
-        sys.exit(1)
+    agents = []
     
     try:
-        # Initialize LLM
+        # Load environment variables
+        load_dotenv()
+        
+        # Verify environment variables
+        verify_environment()
+        
+        # Check Ollama availability with retries
+        if not check_ollama(max_retries=3, retry_delay=5):
+            logger.error("Ollama service is not available after retries")
+            sys.exit(1)
+        
+        # Initialize LLM with more conservative settings
         logger.info("Initializing Ollama LLM...")
-        # llm = CustomOllamaLLM(
-        #     model="ollama/mistral:7b",
-        #     base_url="http://localhost:11434",
-        #     temperature=0.7,
-        #     verbose=True
-        # )
-
         llm = LLM(
             model="ollama/mistral:7b",
             base_url="http://localhost:11434",
-            temperature=0.7,
-            timeout=240
+            temperature=0.2,
+            timeout=300,
+            request_timeout=300
         )
         
         # Create agents and tasks
-        fetcher, summarizer, writer, poster = create_agents(llm)
+        agents = create_agents(llm)
+        fetcher, summarizer, writer, poster = agents
         tasks = create_tasks(fetcher, summarizer, writer, poster)
         
-        # Create and run the crew
+        # Create crew with sequential processing
         crew = Crew(
             agents=[fetcher, summarizer, writer, poster],
             tasks=tasks,
-            verbose=True
+            verbose=True,
+            process="sequential"
         )
         
-        # Execute the workflow
+        # Execute the workflow with retry logic
         logger.info("Starting the blog creation workflow...")
-        result = crew.kickoff()
+        result = run_with_retry(crew, max_retries=3)
         
         # Process completed successfully
         execution_time = time.time() - start_time
         logger.info(f"Process completed successfully in {execution_time:.2f} seconds")
         logger.info(f"Final result: {result}")
+        
+        # Cleanup
+        cleanup_resources(agents)
         return result
         
     except Exception as e:
-        logger.error(f"Error in main process: {str(e)}")
+        logger.error(f"Critical error in main process: {str(e)}")
+        if agents:
+            cleanup_resources(agents)
         sys.exit(1)
 
 if __name__ == "__main__":
