@@ -2,6 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 import sys
 import os
+import pytest
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from tools.news_fetcher_tool import RSSNewsFetcherTool
 from tools.wordpress_poster_tool import WordPressPosterTool
@@ -10,6 +11,8 @@ from custom_ollama import CustomOllamaLLM
 from dotenv import load_dotenv
 import os
 
+
+@pytest.mark.skip(reason="Requires local Ollama and network access")
 class TestCompleteBlogWorkflow(unittest.TestCase):
     def setUp(self):
         load_dotenv()
@@ -144,6 +147,3 @@ class TestCompleteBlogWorkflow(unittest.TestCase):
             auth = mock_wp_post.call_args.kwargs.get('auth')
             self.assertEqual(auth.username, 'testuser')
             self.assertEqual(auth.password, 'testpass')
-
-if __name__ == '__main__':
-    unittest.main()

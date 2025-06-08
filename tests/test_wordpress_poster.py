@@ -42,13 +42,20 @@ def test_successful_post(wordpress_tool):
         status=200
     )
 
-    test_post = """Test Blog Post Title
-This is a test blog post content."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("WORDPRESS_URL", wordpress_url)
+        mp.setenv("WORDPRESS_USER", "user")
+        mp.setenv("WORDPRESS_PASS", "pass")
 
-    result = wordpress_tool._run(test_post)
-    assert 'Successfully posted' in result
-    assert 'ID: 123' in result
-    assert '/test-post' in result
+        result = wordpress_tool._run(
+            "Test Blog Post Title",
+            "This is a test blog post content.",
+            [],
+            []
+        )
+
+    assert result["id"] == 123
+    assert result["link"].endswith("/test-post")
 
 @responses.activate
 def test_authentication_error(wordpress_tool):
@@ -63,11 +70,17 @@ def test_authentication_error(wordpress_tool):
         status=401
     )
 
-    test_post = """Test Blog Post Title
-This is a test blog post content."""
-
-    with pytest.raises(RuntimeError) as exc_info:
-        wordpress_tool._run(test_post)
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("WORDPRESS_URL", wordpress_url)
+        mp.setenv("WORDPRESS_USER", "user")
+        mp.setenv("WORDPRESS_PASS", "bad")
+        with pytest.raises(ValueError) as exc_info:
+            wordpress_tool._run(
+                "Test Blog Post Title",
+                "This is a test blog post content.",
+                [],
+                []
+            )
     assert 'Authentication failed' in str(exc_info.value)
 
 @responses.activate
@@ -83,22 +96,29 @@ def test_invalid_endpoint(wordpress_tool):
         status=404
     )
 
-    test_post = """Test Blog Post Title
-This is a test blog post content."""
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setenv("WORDPRESS_URL", wordpress_url)
+        mp.setenv("WORDPRESS_USER", "user")
+        mp.setenv("WORDPRESS_PASS", "pass")
 
-    with pytest.raises(RuntimeError) as exc_info:
-        wordpress_tool._run(test_post)
+        with pytest.raises(ValueError) as exc_info:
+            wordpress_tool._run(
+                "Test Blog Post Title",
+                "This is a test blog post content.",
+                [],
+                []
+            )
     assert 'API endpoint not found' in str(exc_info.value)
 
 def test_empty_post(wordpress_tool):
-    with pytest.raises(RuntimeError) as exc_info:
-        wordpress_tool._run("")
-    assert 'Empty post data provided' in str(exc_info.value)
+    with pytest.raises(ValueError) as exc_info:
+        wordpress_tool._run("Test", "", [], [])
+    assert 'Content cannot be empty' in str(exc_info.value)
 
 def test_missing_title(wordpress_tool):
-    with pytest.raises(RuntimeError) as exc_info:
-        wordpress_tool._run("\n")
-    assert 'Post title cannot be empty' in str(exc_info.value)
+    with pytest.raises(ValueError) as exc_info:
+        wordpress_tool._run("", "content", [], [])
+    assert 'Title cannot be empty' in str(exc_info.value)
 
 def test_missing_env_vars():
     # Save current environment variables
@@ -119,11 +139,8 @@ def test_missing_env_vars():
             name="wordpress_poster",
             description="Posts content to a WordPress blog using the REST API"
         )
-        test_post = """Test Blog Post Title
-This is a test blog post content."""
-        
-        with pytest.raises(RuntimeError) as exc_info:
-            tool._run(test_post)
+        with pytest.raises(ValueError) as exc_info:
+            tool._run("Test", "Content", [], [])
         assert 'WORDPRESS_URL not set' in str(exc_info.value)
     finally:
         # Restore environment variables
