@@ -27,6 +27,24 @@ class WordPressPosterTool(BaseTool):
     _min_request_interval: float = 2.0  # Minimum seconds between requests
     _max_retries: int = 3
 
+    def _build_api_url(self, base_url: str) -> str:
+        """Return a normalized WordPress posts API URL."""
+        if not base_url:
+            raise ValueError("Base URL cannot be empty")
+
+        if not base_url.startswith(("http://", "https://")):
+            base_url = f"https://{base_url}"
+
+        base_url = base_url.rstrip("/")
+
+        if base_url.endswith("/wp-json/wp/v2/posts"):
+            return base_url
+
+        if base_url.endswith("/wp-json"):
+            return f"{base_url}/wp/v2/posts"
+
+        return f"{base_url}/wp-json/wp/v2/posts"
+
     def _wait_for_rate_limit(self):
         """Implement rate limiting between requests"""
         current_time = time.time()
@@ -82,7 +100,8 @@ class WordPressPosterTool(BaseTool):
             raise ValueError("WORDPRESS_PASS not set in environment variables")
         
         logger.info("WordPress credentials validated successfully")
-        return url, user, password
+        api_url = self._build_api_url(url)
+        return api_url, user, password
 
     def _get_or_create_tag(self, tag_name: str, auth: HTTPBasicAuth) -> Optional[int]:
         """Get tag ID or create if it doesn't exist"""
