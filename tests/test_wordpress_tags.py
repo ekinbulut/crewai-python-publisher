@@ -117,7 +117,12 @@ def test_post_with_tags(wordpress_tool):
             mp.setenv("WORDPRESS_PASS", "testpass")
 
             # Post content with tags
-            result = wordpress_tool._run(post_data)
+            result = wordpress_tool._run(
+                post_data["title"],
+                post_data["content"],
+                post_data["tags"],
+                post_data["categories"]
+            )
 
             # Verify response
             assert result["id"] == 123

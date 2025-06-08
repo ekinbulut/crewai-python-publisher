@@ -1,5 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import requests
 from tools.wordpress_poster_tool import WordPressPosterTool
 
 class TestWordPressPosterTool(unittest.TestCase):
@@ -28,17 +29,23 @@ for testing purposes."""
             'WORDPRESS_USER': 'testuser',
             'WORDPRESS_PASS': 'testpass'
         }):
-            result = self.tool._run(self.test_post)
-        
-        self.assertIn("Successfully posted article", result)
-        self.assertIn("123", result)
-        self.assertIn("https://example.com/test-post", result)
+            result = self.tool._run(
+                "Test Blog Title",
+                "This is the content of the test blog post.\nIt includes multiple lines of text\nfor testing purposes.",
+                [],
+                []
+            )
+
+        self.assertEqual(result["id"], 123)
+        self.assertEqual(result["link"], "https://example.com/test-post")
 
     @patch('tools.wordpress_poster_tool.requests.post')
     def test_failed_authentication(self, mock_post):
         mock_response = MagicMock()
         mock_response.status_code = 401
+        mock_response.ok = False
         mock_response.json.return_value = {"message": "Invalid credentials"}
+        mock_response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=mock_response)
         mock_post.return_value = mock_response
         
         with patch.dict('os.environ', {
@@ -46,10 +53,12 @@ for testing purposes."""
             'WORDPRESS_USER': 'testuser',
             'WORDPRESS_PASS': 'wrongpass'
         }):
-            with self.assertRaises(RuntimeError) as context:
-                self.tool._run(self.test_post)
-            
-            self.assertIn("Error posting to WordPress", str(context.exception))
+            with self.assertRaises(ValueError) as context:
+                self.tool._run(
+                    "Test Blog Title",
+                    "This is the content of the test blog post.\nIt includes multiple lines of text\nfor testing purposes.",
+                    [],
+                    []
+                )
 
-if __name__ == '__main__':
-    unittest.main()
+            self.assertIn("Authentication failed", str(context.exception))
