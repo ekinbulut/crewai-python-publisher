@@ -107,9 +107,12 @@ def test_missing_env_vars():
     original_pass = os.environ.get('WORDPRESS_PASS')
     
     # Temporarily remove environment variables
-    if 'WORDPRESS_URL' in os.environ: del os.environ['WORDPRESS_URL']
-    if 'WORDPRESS_USER' in os.environ: del os.environ['WORDPRESS_USER']
-    if 'WORDPRESS_PASS' in os.environ: del os.environ['WORDPRESS_PASS']
+    if 'WORDPRESS_URL' in os.environ:
+        del os.environ['WORDPRESS_URL']
+    if 'WORDPRESS_USER' in os.environ:
+        del os.environ['WORDPRESS_USER']
+    if 'WORDPRESS_PASS' in os.environ:
+        del os.environ['WORDPRESS_PASS']
     
     try:
         tool = WordPressPosterTool(
@@ -124,6 +127,9 @@ This is a test blog post content."""
         assert 'WORDPRESS_URL not set' in str(exc_info.value)
     finally:
         # Restore environment variables
-        if original_url: os.environ['WORDPRESS_URL'] = original_url
-        if original_user: os.environ['WORDPRESS_USER'] = original_user
-        if original_pass: os.environ['WORDPRESS_PASS'] = original_pass
+        if original_url:
+            os.environ['WORDPRESS_URL'] = original_url
+        if original_user:
+            os.environ['WORDPRESS_USER'] = original_user
+        if original_pass:
+            os.environ['WORDPRESS_PASS'] = original_pass

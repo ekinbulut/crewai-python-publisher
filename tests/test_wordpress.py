@@ -33,7 +33,7 @@ def test_wordpress_post():
         logger.info(f"Raw response:\n{json.dumps(result, indent=2)}")
         
         if isinstance(result, dict) and 'id' in result:
-            logger.info(f"Post created successfully!")
+            logger.info("Post created successfully!")
             logger.info(f"Post ID: {result['id']}")
             logger.info(f"Post URL: {result.get('link', 'No link available')}")
             logger.info(f"Post Status: {result.get('status', 'unknown')}")
@@ -48,6 +48,6 @@ def test_wordpress_post():
 if __name__ == "__main__":
     try:
         test_wordpress_post()
-    except Exception as e:
+    except Exception:
         logger.error("Test failed", exc_info=True)
         sys.exit(1)

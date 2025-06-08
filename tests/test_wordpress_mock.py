@@ -1,7 +1,6 @@
 import unittest
 from unittest.mock import patch, MagicMock
 from tools.wordpress_poster_tool import WordPressPosterTool
-import requests
 
 class TestWordPressPosterTool(unittest.TestCase):
     def setUp(self):
