@@ -3,7 +3,6 @@ from tools.news_fetcher_tool import RSSNewsFetcherTool
 from tools.wordpress_poster_tool import WordPressPosterTool
 from logger import setup_logger
 from check_ollama import check_ollama
-from custom_ollama import CustomOllamaLLM
 import os
 import sys
 import time

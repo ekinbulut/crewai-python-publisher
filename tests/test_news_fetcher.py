@@ -15,7 +15,7 @@ def is_recent_date(date_str):
         parsed_date = datetime.strptime(date_str, "%a, %d %b %Y %H:%M:%S %z")
         cutoff_date = datetime.now(timezone.utc) - timedelta(hours=24)
         return parsed_date >= cutoff_date
-    except:
+    except Exception:
         return False
 
 def test_news_fetcher():
@@ -75,7 +75,7 @@ def test_news_fetcher():
             
         return True
         
-    except Exception as e:
+    except Exception:
         logger.exception("Test failed with exception")
         return False
 

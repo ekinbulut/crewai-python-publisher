@@ -4,7 +4,7 @@ import feedparser
 from logger import setup_logger
 import time
 from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 logger = setup_logger()
 

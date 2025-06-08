@@ -6,9 +6,7 @@ import json
 from dotenv import load_dotenv
 from requests.auth import HTTPBasicAuth
 from logger import setup_logger
-from typing import Dict, Any, List, Tuple, Optional, Union
-from urllib.parse import urljoin, urlparse
-import re
+from typing import Dict, Any, List, Tuple, Optional
 import time
 
 logger = setup_logger()
@@ -146,7 +144,7 @@ class WordPressPosterTool(BaseTool):
             
         except requests.exceptions.JSONDecodeError:
             raise ValueError(f"Invalid JSON response: {response.text}")
-        except requests.exceptions.HTTPError as e:
+        except requests.exceptions.HTTPError:
             if response.status_code == 401:
                 raise ValueError("Authentication failed. Check your WordPress credentials.")
             elif response.status_code == 404:

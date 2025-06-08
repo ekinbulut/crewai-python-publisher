@@ -1,7 +1,5 @@
-import os
 import pytest
 import responses
-import requests
 from requests.auth import HTTPBasicAuth
 from dotenv import load_dotenv
 from tools.wordpress_poster_tool import WordPressPosterTool
