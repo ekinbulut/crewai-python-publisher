@@ -52,7 +52,12 @@ cp .env.example .env
 
 ## Configuration
 
-Create a `.env` file with the following variables:
+Copy `.env.example` to `.env` and update the values:
+```
+cp .env.example .env
+```
+
+The `.env` file should contain the following variables:
 ```
 WORDPRESS_URL=your-wordpress-site/wp-json/wp/v2/posts
 WORDPRESS_USER=your-username
